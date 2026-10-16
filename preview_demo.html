@@ -1,0 +1,18 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>VIWACO Reader 1.6.0 Preview</title>
+<style>
+:root{--primary-text-color:#eaf2fc;--secondary-text-color:#a9b7c7;--card-background-color:#212933;--secondary-background-color:#2b3440;--divider-color:#3a4959;--primary-color:#23a8e6;--info-color:#5bb8f5}*{box-sizing:border-box}body{background:#111923;color:#eaf2fc;font-family:system-ui,-apple-system,sans-serif;padding:22px;margin:0}.wrap{max-width:1600px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;margin:0 0 18px}.badge{color:#7c9ab0;font-size:12px}.grid{display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);gap:18px}.panel{min-width:0}.paneleditor{border:1px solid #374656;padding:22px;border-radius:16px;background:#1d2630}.paneleditor h2{font-size:16px;font-weight:700}.phone .grid{display:block}.phone .paneleditor{display:none}@media(max-width:640px){body{padding:8px}.grid{display:block}.paneleditor{display:none}} </style>
+</head><body><div class="wrap"><div class="head"><div><b>VIWACO Reader · v1.6.0</b> <span class="badge">Bản xem trước – dữ liệu minh họa</span></div></div><div class="grid"><section class="panel paneleditor"><h2>Cấu hình thẻ VIWACO</h2><viwaco-overview-card-editor id="editor"></viwaco-overview-card-editor></section><section class="panel"><viwaco-overview-card id="card"></viwaco-overview-card></section></div></div>
+<script src="./custom_components/viwaco_reader/frontend/viwaco-dashboard.js"></script>
+<script>
+const invoices=[];const readings=[];
+const usage=[19,18,14,21,16,17,12,12,14,17,0,0]; const prices=[200215,188830,143290,230000,166060,177445,120520,120520,143290,177445,0,0];
+let previous=1220;
+for(let i=0;i<10;i++){const p=`${i+1}/2026`;invoices.unshift({period:p,usage_m3:usage[i],total_vnd:prices[i],paid_vnd:prices[i],payment_date:'12/10/2026',invoice_url:'https://hoadon.viwaco.vn/tra-cuu/?code=EXAMPLE'});readings.unshift({period:p,read_date:`08/${String(i+1).padStart(2,'0')}/2026`,previous_m3:previous,current_m3:previous+usage[i],usage_m3:usage[i]});previous+=usage[i];}
+for(let i=0;i<12;i++){const p=`${i+1}/2025`;invoices.push({period:p,usage_m3:16+i%5,total_vnd:150000+i*10000,paid_vnd:150000+i*10000});}
+const meters=[{customer_id:'000000001',name:'Đồng hồ nước căn hộ A',available:true,history_all:true,history_available_months:95,meter_serial:'ITRON D15',reading_book:'XP52',archived_months:0,readings,invoices,recent_months:invoices.slice(0,3).map(inv=>({...inv,previous_m3:1330,current_m3:1350})),customer:{name:'Khách hàng mẫu',customer_id:'000000001',address:'Địa chỉ minh họa',phone:'Không có dữ liệu'},archive_status:{running:false}}];
+const hass={callWS: async ()=>meters,callService:async()=>{}};
+const card=document.querySelector('#card'),editor=document.querySelector('#editor');
+card.setConfig({palette:'cyan',background_opacity:100});card.hass=hass;
+editor.setConfig({palette:'cyan',background_opacity:100});editor.hass=hass;
+editor.addEventListener('config-changed',ev=>{card.setConfig(ev.detail.config);});
+</script></body></html>
