@@ -1,0 +1,71 @@
+refresh:
+  name: Refresh water meter data
+  description: Retrieve latest meter readings and invoices. Leave customer code blank to refresh every VIWACO meter.
+  fields:
+    customer_id:
+      name: Customer code
+      description: Optional VIWACO customer code
+      example: "000000001"
+      selector:
+        text:
+reload:
+  name: Reload integration
+  description: Reload one or all VIWACO customer entries without restarting Home Assistant.
+  fields:
+    customer_id:
+      name: Customer code
+      description: Optional VIWACO customer code
+      example: "000000001"
+      selector:
+        text:
+
+archive_invoices:
+  name: Lưu hóa đơn điện tử
+  description: >
+    Đọc chi tiết từng kỳ và tùy chọn tải PDF gốc/PNG từ hoadon.viwaco.vn
+    vào /config/www/viwaco_reader. Có thể chạy thủ công; chế độ tự lưu khi có kỳ mới được bật riêng trong Configure.
+    Tệp trong www có thể truy cập không cần đăng nhập qua /local.
+  fields:
+    customer_id:
+      name: Mã khách hàng
+      description: Để trống để chạy cho tất cả khách hàng đã thêm.
+      example: "000000001"
+      selector:
+        text: {}
+    year:
+      name: Năm
+      description: 0 nghĩa là mọi năm đã có hóa đơn.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 2100
+          mode: box
+    mode:
+      name: Loại lưu trữ
+      default: both
+      selector:
+        select:
+          options:
+            - label: Chi tiết số liệu (không tạo file)
+              value: details
+            - label: PDF chính thức
+              value: pdf
+            - label: Ảnh PNG từ PDF
+              value: png
+            - label: Cả PDF và PNG
+              value: both
+    overwrite:
+      name: Tải lại các kỳ đã lưu
+      default: false
+      selector:
+        boolean: {}
+    max_invoices:
+      name: Giới hạn số kỳ
+      description: 0 là toàn bộ; có thể thử 1-3 kỳ trước khi tải hết.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 200
+          mode: box

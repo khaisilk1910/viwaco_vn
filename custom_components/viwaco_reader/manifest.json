@@ -1,0 +1,22 @@
+{
+  "domain": "viwaco_reader",
+  "name": "VIWACO Reader",
+  "version": "1.7.0",
+  "config_flow": true,
+  "documentation": "https://github.com/khaisiik1910/viwaco_vn#readme",
+  "iot_class": "cloud_polling",
+  "dependencies": [
+    "http",
+    "websocket_api",
+    "persistent_notification"
+  ],
+  "requirements": [
+    "beautifulsoup4==4.12.3",
+    "pypdfium2==5.8.0",
+    "pypdf==5.9.0"
+  ],
+  "codeowners": [
+    "@khaisiik1910"
+  ],
+  "issue_tracker": "https://github.com/khaisiik1910/viwaco_vn/issues"
+}
