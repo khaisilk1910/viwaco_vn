@@ -1,0 +1,9 @@
+# Dashboard raw YAML view example (if editing raw dashboard configuration)
+title: VIWACO Water Analytics
+views:
+  - title: Nước & tiền
+    path: water
+    icon: mdi:water
+    type: panel
+    cards:
+      - type: custom:viwaco-overview-card

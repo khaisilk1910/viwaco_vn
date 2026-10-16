@@ -1,0 +1,5 @@
+# In Edit dashboard > Add card > Manual
+# Important: add JS resource first (README instructions).
+type: custom:viwaco-overview-card
+# Optional: uncomment to show only one account in this card
+# customer_id: "000000001"
