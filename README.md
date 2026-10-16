@@ -16,6 +16,18 @@ Tích hợp **không chính thức**, lấy thông tin tiêu thụ nước và h
 
 ## Cài đặt qua HACS
 
+
+Nhấn nút dưới đây để mở trực tiếp repository này trong HACS:
+
+[![Mở repository trong HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khaisilk1910&repository=viwaco_vn&category=integration)
+
+Sau đó:
+
+1. Chọn **Download** trong HACS để cài đặt tích hợp.
+2. Khởi động lại Home Assistant.
+3. Vào **Settings → Devices & services → Add integration**.
+4. Tìm **VIWACO Reader** và hoàn tất cấu hình theo giao diện.
+
 1. Cần Home Assistant có [HACS](https://www.hacs.xyz/docs/use/download/download/) và kết nối Internet. Đăng nhập GitHub nếu HACS yêu cầu.
 2. Mở **HACS → dấu ba chấm (⋮) → Custom repositories**.
 3. Dán `https://github.com/khaisiik1910/viwaco_vn`, chọn loại **Integration**, rồi **Add**.
