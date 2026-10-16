@@ -38,15 +38,13 @@ Sau đó:
 **Cài thủ công:** Chép nguyên thư mục `custom_components/viwaco_reader` vào `/config/custom_components/viwaco_reader`, khởi động lại Home Assistant, sau đó thêm tích hợp như bước 5. Không chép toàn bộ ZIP vào `/config/custom_components`.
 
 **Card Lovelace:** Với dashboard ở chế độ Storage, tích hợp sẽ thử đăng ký resource tự động. Nếu card báo không tìm thấy, vào **Settings → Dashboards → Resources** thêm URL `/viwaco_reader/viwaco-dashboard.js?v=1.7.0` kiểu **JavaScript module**, rồi thêm card bằng YAML:
-
-```yaml
-type: custom:viwaco-overview-card
-# customer_id: "000000001"  # tùy chọn, chỉ hiện 1 đồng hồ
-```
+<img width="491" height="420" alt="image" src="https://github.com/user-attachments/assets/c7bfe762-a8d4-4393-9be1-2b9219092974" />
+- Nên thiết lập cho card này full 1 Dashboard vì có nhiều thông tin.
 
 Các ví dụ dashboard khác nằm trong thư mục `dashboard/`.
 
 ## Cách lấy Cookie (máy tính, Chrome/Edge)
+<img width="960" height="492" alt="image" src="https://github.com/user-attachments/assets/ba085a93-1777-4c48-9a0e-a9ff113e7801" />
 
 1. Mở **https://tracuu.viwaco.vn/**, truy cập đúng tài khoản/mã khách hàng, **tự nhập CAPTCHA** và vào trang tra cứu sau khi đăng nhập.
 2. Nhấn **F12 → Network**, bật **Preserve log** nếu cần. Mở lại mục hóa đơn để có request `Invoice.aspx` (hoặc tải lại trang khi phiên đang đăng nhập).
