@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a VIWACO water meter",
+        "description": "Log in to tracuu.viwaco.vn and complete the CAPTCHA. From Network > Invoice.aspx > Request Headers, paste the full real Cookie value (or the Cookie: line). Do not use example cookies. Each customer code needs its own session.",
+        "data": {
+          "customer_id": "Customer code",
+          "cookie": "Session Cookie (private)",
+          "meter_name": "Meter name (optional)"
+        }
+      },
+      "reconfigure": {
+        "title": "Update VIWACO session",
+        "description": "Update the session Cookie for this customer. The customer code and entity history remain unchanged.",
+        "data": {
+          "cookie": "New Cookie"
+        }
+      },
+      "reauth_confirm": {
+        "title": "VIWACO session expired",
+        "description": "Log in again in your browser and copy the new Cookie request header.",
+        "data": {
+          "cookie": "New Cookie"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Expired/invalid Cookie or wrong customer",
+      "cannot_connect": "Cannot load invoice and meter pages",
+      "invalid_customer_id": "The customer code must contain digits only",
+      "invalid_cookie_format": "Cookie format invalid. Copy Request Headers > Cookie (not Set-Cookie).",
+      "session_expired": "Session expired or not logged in. Get a fresh Cookie after login.",
+      "wrong_customer": "This Cookie belongs to a different customer code."
+    },
+    "abort": {
+      "already_configured": "Customer already added",
+      "reauth_successful": "Session updated",
+      "reconfigure_successful": "Session updated",
+      "wrong_account": "Wrong customer"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "VIWACO meter settings",
+        "description": "Change name, poll interval and history range. Move the slider to the far right ({max_months} months) to select ALL VIWACO history, including future months. Range is anchored to latest VIWACO period; existing PDF/PNG files are not deleted. Use Reconfigure to update the Cookie. Session keep-alive checks only the invoice page every 15 minutes by default; effectiveness depends on VIWACO session policy.",
+        "data": {
+          "meter_name": "Display name",
+          "update_hours": "Update interval (hours)",
+          "history_months": "History months (maximum = All)",
+          "keepalive_enabled": "Enable session keep-alive (default: on)",
+          "keepalive_minutes": "Session check interval (minutes)",
+          "auto_archive_enabled": "Automatically archive newly published invoices",
+          "auto_archive_mode": "Automatic invoice format"
+        },
+        "data_description": {
+          "history_months": "Minimum 6 months. Limits dashboard data and future invoice archives for this meter only.",
+          "auto_archive_enabled": "Opt in to automatic invoice archiving after a successful refresh. Files saved under /www are publicly accessible through /local/.",
+          "auto_archive_mode": "Select PDF, PNG, or both for newly available periods."
+        }
+      }
+    },
+    "error": {
+      "invalid_history_months": "History months outside allowed range."
+    }
+  }
+}

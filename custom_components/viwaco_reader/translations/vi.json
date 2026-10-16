@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thêm đồng hồ VIWACO",
+        "description": "Đăng nhập tracuu.viwaco.vn và nhập CAPTCHA. Vào Network > Invoice.aspx > Request Headers, dán Cookie thật (có hoặc không có tiền tố Cookie:). Không nhập Cookie ví dụ. Mỗi mã khách hàng cần phiên riêng.",
+        "data": {
+          "customer_id": "Mã khách hàng",
+          "cookie": "Cookie phiên đăng nhập (bảo mật)",
+          "meter_name": "Tên đồng hồ (tùy chọn)"
+        }
+      },
+      "reconfigure": {
+        "title": "Thay Cookie đồng hồ VIWACO",
+        "description": "Cập nhật Cookie nhưng giữ nguyên mã khách hàng và lịch sử entity.",
+        "data": {
+          "cookie": "Cookie mới"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Phiên đăng nhập VIWACO hết hạn",
+        "description": "Đăng nhập lại bằng trình duyệt và sao chép Cookie mới.",
+        "data": {
+          "cookie": "Cookie mới"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Cookie không đúng, hết hạn hoặc sai mã khách hàng",
+      "cannot_connect": "Không lấy được dữ liệu chỉ số và hóa đơn",
+      "invalid_customer_id": "Mã khách hàng chỉ được chứa chữ số",
+      "invalid_cookie_format": "Sai định dạng Cookie. Lấy ở Request Headers > Cookie (không phải Set-Cookie).",
+      "session_expired": "Phiên hết hạn hoặc chưa đăng nhập. Lấy Cookie mới sau khi đăng nhập.",
+      "wrong_customer": "Cookie đang thuộc mã khách hàng khác."
+    },
+    "abort": {
+      "already_configured": "Mã khách hàng này đã được thêm",
+      "reauth_successful": "Đã cập nhật phiên đăng nhập",
+      "reconfigure_successful": "Đã cập nhật phiên đăng nhập",
+      "wrong_account": "Không đúng mã khách hàng"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tùy chỉnh đồng hồ VIWACO",
+        "description": "Thay đổi tên, chu kỳ cập nhật và phạm vi lịch sử. Kéo thanh trượt đến mức tối đa ({max_months} tháng) để chọn TẤT CẢ dữ liệu VIWACO có và tự nhận thêm các tháng mới. Khoảng thời gian tính từ kỳ VIWACO mới nhất; không xóa các PDF/PNG đã lưu. Muốn đổi Cookie, dùng Reconfigure. Mặc định kiểm tra phiên mỗi 15 phút; việc kéo dài phiên tùy thuộc chính sách máy chủ VIWACO.",
+        "data": {
+          "meter_name": "Tên hiển thị",
+          "update_hours": "Cập nhật mỗi (giờ)",
+          "history_months": "Số tháng lịch sử (mức tối đa = Tất cả)",
+          "keepalive_enabled": "Bật duy trì phiên đăng nhập",
+          "keepalive_minutes": "Chu kỳ duy trì phiên (phút)",
+          "auto_archive_enabled": "Tự lưu hóa đơn khi xuất hiện tháng mới",
+          "auto_archive_mode": "Định dạng hóa đơn tự lưu"
+        },
+        "data_description": {
+          "history_months": "Từ 6 tháng đến tất cả dữ liệu trên website. Giới hạn lịch sử hiển thị và hóa đơn tải/lưu tiếp theo cho đồng hồ này.",
+          "auto_archive_enabled": "Bật để tự lưu hóa đơn mới sau khi đồng bộ thành công. File trong /www có thể truy cập công khai qua /local/.",
+          "auto_archive_mode": "Chọn PDF, PNG hoặc cả hai. Chỉ áp dụng cho kỳ mới sau khi bật."
+        }
+      }
+    },
+    "error": {
+      "invalid_history_months": "Số tháng không nằm trong khoảng hợp lệ."
+    }
+  }
+}
