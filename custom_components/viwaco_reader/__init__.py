@@ -25,7 +25,7 @@ from .coordinator import ViwacoCoordinator
 from .recent import latest_billing_periods
 
 _LOGGER = logging.getLogger(__name__)
-DASHBOARD_URL = "/viwaco_reader/viwaco-dashboard.js?v=1.7.0"
+DASHBOARD_URL = "/viwaco_reader/viwaco-dashboard.js?v=1.7.3"
 
 
 async def _async_register_dashboard_resource(hass: HomeAssistant) -> None:

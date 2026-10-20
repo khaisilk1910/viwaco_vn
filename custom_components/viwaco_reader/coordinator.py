@@ -61,6 +61,8 @@ class ViwacoCoordinator(DataUpdateCoordinator[ViwacoData]):
         self._reported_message: str | None = None
         self._reauth_started = False
         self._keepalive_running = False
+        self._auth_failure_count = 0
+        self._auth_first_failure: datetime | None = None
 
     def _persist_cookie(self, cookie: str) -> None:
         """Persist server-rotated cookies using HA's event-loop config API."""
@@ -104,19 +106,49 @@ class ViwacoCoordinator(DataUpdateCoordinator[ViwacoData]):
             _LOGGER.info("VIWACO customer=%s: kết nối được khôi phục", self.customer_id)
         self._reported_message = None
         self.last_error = None
+        self._auth_failure_count = 0
+        self._auth_first_failure = None
+        self._reauth_started = False
 
-    def _auth_failed(self, exc: ViwacoAuthError):
+    def _auth_failed(self, exc: ViwacoAuthError) -> tuple[str, bool]:
+        """Confirm auth errors across checks before starting an HA repair.
+
+        At least two authentication failures >=45 seconds apart are required.
+        The first failure is a diagnostic, not evidence the session is expired.
+        """
+        now = datetime.now(timezone.utc)
+        if (self._auth_first_failure is None
+                or now - self._auth_first_failure > timedelta(hours=3)):
+            self._auth_first_failure = now
+            self._auth_failure_count = 1
+        elif now - self._auth_first_failure >= timedelta(seconds=45):
+            self._auth_failure_count += 1
+
         reason = exc.reason
         message = _AUTH_MESSAGES.get(reason, "Phiên VIWACO không hợp lệ.")
-        _LOGGER.error("VIWACO customer=%s AUTH_FAILED reason=%s (no credentials logged)", self.customer_id, reason)
+        if self._auth_failure_count < 2:
+            _LOGGER.warning(
+                "VIWACO customer=%s AUTH_UNCONFIRMED reason=%s evidence=%s; will recheck (no credentials logged)",
+                self.customer_id, reason, getattr(exc, "evidence", "unspecified"),
+            )
+            self._state("offline", error="Đang kiểm tra lại xác thực VIWACO.")
+            return message, False
+
+        if self.session_status != "expired":
+            _LOGGER.error(
+                "VIWACO customer=%s AUTH_FAILED reason=%s evidence=%s confirmed across checks (no credentials logged)",
+                self.customer_id, reason, getattr(exc, "evidence", "unspecified"),
+            )
         self._state("expired", error=message)
         self._alert(message, auth=True)
         if not self._reauth_started:
             self._reauth_started = True
             self.entry.async_start_reauth(self.hass)
-        return message
+        return message, True
 
     def _network_failed(self, exc: ViwacoConnectionError, source: str) -> str:
+        self._auth_failure_count = 0
+        self._auth_first_failure = None
         message = f"Không tải được dữ liệu ({source}): {exc}"
         _LOGGER.error("VIWACO customer=%s NETWORK_ERROR source=%s type=%s detail=%s",
                       self.customer_id, source, type(exc).__name__, str(exc))
@@ -153,11 +185,13 @@ class ViwacoCoordinator(DataUpdateCoordinator[ViwacoData]):
             self.available_history_months = available_month_span(all_data)
             selected = selected_history(all_data, self.history_months)
         except ViwacoAuthError as exc:
-            message = self._auth_failed(exc)
+            message, confirmed = self._auth_failed(exc)
             if self.data is not None:
                 # Preserve last good data on expired auth; status clearly says expired.
                 return self.data
-            raise ConfigEntryAuthFailed(message) from exc
+            if confirmed:
+                raise ConfigEntryAuthFailed(message) from exc
+            raise UpdateFailed("VIWACO authentication under verification") from exc
         except ViwacoConnectionError as exc:
             message = self._network_failed(exc, "refresh")
             if self.data is not None:
@@ -186,7 +220,7 @@ class ViwacoCoordinator(DataUpdateCoordinator[ViwacoData]):
 
     async def async_keepalive(self) -> None:
         """Check session without downloading PDF/PNG or re-parsing meter history."""
-        if self._keepalive_running or self.session_status == "expired":
+        if self._keepalive_running:
             return
         self._keepalive_running = True
         try:

@@ -200,7 +200,8 @@ def _validated_rows(html: str, expected_customer_id: str) -> list[list[dict]]:
     parser = _ViwacoTableParser()
     parser.feed(html)
     if parser.customer_id is None:
-        raise ViwacoWrongAccountError("session_expired")
+        # Missing expected markup alone does not prove an expired session.
+        raise ViwacoParseError("Customer ID field missing from VIWACO HTML")
     if parser.customer_id != expected_customer_id:
         raise ViwacoWrongAccountError("wrong_customer")
     if not parser.found_table or not parser.rows:
@@ -217,7 +218,8 @@ def parse_customer_html(html: str, expected_customer_id: str) -> CustomerInfo:
     parser = _ViwacoTableParser()
     parser.feed(html)
     if parser.customer_id is None:
-        raise ViwacoWrongAccountError("session_expired")
+        # Missing expected markup alone does not prove an expired session.
+        raise ViwacoParseError("Customer ID field missing from VIWACO HTML")
     if parser.customer_id != expected_customer_id:
         raise ViwacoWrongAccountError("wrong_customer")
     return CustomerInfo(

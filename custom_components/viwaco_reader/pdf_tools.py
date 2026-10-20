@@ -90,6 +90,22 @@ def check_or_repair_pdf(payload: bytes) -> CheckedPdf:
     except Exception as first_error:
         _LOGGER.debug("VIWACO original PDF failed PDFium validation: %s", type(first_error).__name__)
 
+    # A response lacking the PDF trailer is usually a truncated stream,
+    # not an xref defect. Don't spam pypdf._reader with "EOF marker not found".
+    # If the last bytes include startxref, append a missing terminal marker.
+    if b"%%EOF" not in payload[-4096:]:
+        if __import__("re").search(rb"startxref\s+\d+\s*$", payload[-4096:]):
+            trial = payload + b"\n%%EOF\n"
+            try:
+                pages = _check_pdf_with_pdfium(trial)
+                return CheckedPdf(trial, True, len(payload), pages)
+            except Exception:
+                pass
+        raise InvoicePdfError(
+            "PDF tải về thiếu %%EOF (khả năng máy chủ trả dữ liệu bị cắt); "
+            "không thể phục hồi, sẽ thử nguồn tải khác hoặc bản tham khảo."
+        )
+
     try:
         recovered = _recover_pdf(payload)
         pages = _check_pdf_with_pdfium(recovered)

@@ -166,7 +166,7 @@ class ViwacoSensor(CoordinatorEntity, SensorEntity):
                 "last_session_check": coordinator.last_session_check.isoformat() if coordinator.last_session_check else None,
                 "last_successful_fetch": coordinator.last_successful_fetch.isoformat() if coordinator.last_successful_fetch else None,
                 "cache_saved_at": coordinator.cache_saved_at,
-                "note": "valid=phiên hợp lệ; cached=khôi phục từ cache; offline=lỗi mạng; expired=Cookie hết hạn",
+                "note": "valid=phiên hợp lệ; cached=khôi phục từ cache; offline=lỗi kết nối, thay đổi HTML hoặc phiên đang xác minh; expired=lỗi xác thực được xác nhận",
             }
         data = self.coordinator.data
         if data is None or not data.invoices or not data.readings:

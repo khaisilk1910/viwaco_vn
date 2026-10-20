@@ -22,7 +22,7 @@ reload:
 archive_invoices:
   name: Lưu hóa đơn điện tử
   description: >
-    Đọc chi tiết từng kỳ và tùy chọn tải PDF gốc/PNG từ hoadon.viwaco.vn
+    Đọc chi tiết từng kỳ và tạo PDF A4/PNG từ bản thể hiện HTML trên VIWACO. Đây là bản in, không chứa chữ ký số gốc.
     vào /config/www/viwaco_reader. Có thể chạy thủ công; chế độ tự lưu khi có kỳ mới được bật riêng trong Configure.
     Tệp trong www có thể truy cập không cần đăng nhập qua /local.
   fields:
@@ -49,9 +49,9 @@ archive_invoices:
           options:
             - label: Chi tiết số liệu (không tạo file)
               value: details
-            - label: PDF chính thức
+            - label: PDF A4 từ HTML VIWACO
               value: pdf
-            - label: Ảnh PNG từ PDF
+            - label: Ảnh PNG từ HTML VIWACO
               value: png
             - label: Cả PDF và PNG
               value: both

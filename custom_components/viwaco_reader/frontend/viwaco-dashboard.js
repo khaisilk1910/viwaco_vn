@@ -1,4 +1,4 @@
-/* VIWACO Reader Dashboard 1.6.0 — standalone Lovelace card, no third-party JS.
+/* VIWACO Reader Dashboard 1.7.1 — standalone Lovelace card, no third-party JS.
    History and customer profile come from the authenticated Home Assistant
    WebSocket. Cookie and ASP.NET VIEWSTATE are never transmitted to the browser.
    Contact details can be hidden on screen; this is not an access control. */
@@ -167,8 +167,8 @@ class ViwacoOverviewCard extends HTMLElement {
         <td>${reading?num(reading.previous_m3):'—'}</td><td>${reading?num(reading.current_m3):'—'}</td>
         <td><b>${money(inv.total_vnd)}</b></td><td>${money(inv.paid_vnd)}</td>
         <td>${E(inv.payment_date||'—')}</td><td>${detail}</td>
-        <td>${pdf?`<a class="link" href="${E(pdf)}" target="_blank" rel="noopener noreferrer">PDF ↗</a>`:'—'}</td>
-        <td>${png?`<a class="link" href="${E(png)}" target="_blank" rel="noopener noreferrer">PNG ↗</a>`:'—'}</td>
+        <td>${pdf?`<a class="link" href="${E(pdf)}" target="_blank" rel="noopener noreferrer">${archive.pdf_source==='viwaco-summary'?'PDF tham khảo ⚠':archive.pdf_source==='viwaco-html'?'PDF từ HTML ↗':'PDF gốc ↗'}</a>`:'—'}</td>
+        <td>${png?`<a class="link" href="${E(png)}" target="_blank" rel="noopener noreferrer">${archive.png_source==='viwaco-summary'?'PNG tham khảo ⚠':archive.png_source==='viwaco-html'?'PNG từ HTML ↗':'PNG ↗'}</a>`:'—'}</td>
         <td>${trustedBillUrl(inv.invoice_url)?`<a class="link" href="${E(trustedBillUrl(inv.invoice_url))}" target="_blank" rel="noopener noreferrer">VIWACO ↗</a>`:'—'}</td></tr>`;
     }).join('');
     const opts = `<option value="*" ${this._meterId==='*'?'selected':''}>Tất cả đồng hồ</option>`+(this._meters||[]).map(m=>`<option value="${E(m.customer_id)}" ${m.customer_id===this._meterId?'selected':''}>${E(m.name)} · ${E(m.customer_id)}</option>`).join('');

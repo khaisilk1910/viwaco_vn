@@ -1,6 +1,8 @@
 """Fetch VIWACO HTML using a manually authenticated browser session Cookie."""
 
 import asyncio
+import re
+from urllib.parse import urlsplit
 
 from aiohttp import ClientError, ClientTimeout
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -22,13 +24,28 @@ from .parser import (
 class ViwacoAuthError(Exception):
     """Authentication error with a public, non-secret UI reason."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, evidence: str = "unspecified") -> None:
         super().__init__(reason)
         self.reason = reason
+        # Static diagnostic tags; never store redirect URLs or credentials.
+        self.evidence = evidence
 
 
 class ViwacoConnectionError(Exception):
     """Site request or response format error."""
+
+
+def _login_page(html: str) -> bool:
+    """Only classify clearly identifiable login forms as expired auth.
+
+    A service notice, maintenance page or changed VIWACO markup must not
+    initiate a Home Assistant reauthentication repair.
+    """
+    if re.search(r"<input\b[^>]*\btype\s*=\s*[\"']?password\b", html, re.I):
+        return True
+    if re.search(r"<form\b[^>]*\baction\s*=\s*[\"'][^\"']*(?:login|dangnhap|signin)", html, re.I):
+        return True
+    return False
 
 
 class ViwacoApi:
@@ -58,7 +75,7 @@ class ViwacoApi:
                 try:
                     cookie = normalize_cookie(self.cookie)
                 except CookieFormatError as exc:
-                    raise ViwacoAuthError("invalid_cookie_format") from exc
+                    raise ViwacoAuthError("invalid_cookie_format", evidence="malformed_cookie") from exc
                 async with session.get(
                     url,
                     headers={
@@ -68,8 +85,19 @@ class ViwacoApi:
                     },
                     timeout=ClientTimeout(total=25), allow_redirects=False,
                 ) as response:
-                    if response.status in (301, 302, 303, 307, 308, 401, 403):
-                        raise ViwacoAuthError("session_expired")
+                    if response.status in (401, 403):
+                        raise ViwacoAuthError("session_expired", evidence=f"http_{response.status}")
+                    if response.status in (301, 302, 303, 307, 308):
+                        location = getattr(response, "headers", {}).get("Location", "")
+                        target = urlsplit(location)
+                        redirect_path = target.path.lower()
+                        # An external redirect cannot be trusted as evidence of login expiry.
+                        same_host = not target.hostname or target.hostname.lower() == "tracuu.viwaco.vn"
+                        if same_host and any(word in redirect_path for word in ("login", "dangnhap", "signin")):
+                            raise ViwacoAuthError("session_expired", evidence="login_redirect")
+                        raise ViwacoConnectionError(
+                            f"VIWACO HTTP redirect {response.status} on {page}; login not confirmed"
+                        )
                     if response.status != 200:
                         raise ViwacoConnectionError(f"VIWACO HTTP status {response.status} on {page}")
                     # Only the two fixed first-party HTTPS pages are requested.
@@ -78,7 +106,10 @@ class ViwacoApi:
                     html = (await response.content.read(2 * 1024 * 1024 + 1))
                     if len(html) > 2 * 1024 * 1024:
                         raise ViwacoConnectionError(f"VIWACO {page}: HTML exceeds 2 MiB")
-                    return html.decode("utf-8", errors="replace"), dict(response.cookies)
+                    decoded = html.decode("utf-8", errors="replace")
+                    if _login_page(decoded):
+                        raise ViwacoAuthError("session_expired", evidence="login_form")
+                    return decoded, dict(response.cookies)
         except asyncio.TimeoutError as exc:
             raise ViwacoConnectionError(f"Timeout 25s when fetching {page}") from exc
         except ClientError as exc:
@@ -98,14 +129,16 @@ class ViwacoApi:
             parser = _ViwacoTableParser()
             parser.feed(html)
             if parser.customer_id is None:
-                raise ViwacoAuthError("session_expired")
+                raise ViwacoConnectionError(
+                    "Invoice.aspx: customer ID missing from HTML; cannot prove Cookie expired"
+                )
             if parser.customer_id != self.customer_id:
-                raise ViwacoAuthError("wrong_customer")
+                raise ViwacoAuthError("wrong_customer", evidence="mismatched_customer")
             if not parser.found_table:
                 raise ViwacoConnectionError("Invoice.aspx: missing authenticated invoice table")
             self._accept_response_cookies(new_cookies)
         except ViwacoWrongAccountError as exc:
-            raise ViwacoAuthError(exc.reason) from exc
+            raise ViwacoAuthError(exc.reason, evidence="mismatched_customer") from exc
 
     async def async_fetch_data(self) -> ViwacoData:
         """Fetch one customer snapshot without overlapping keep-alive."""
@@ -147,6 +180,6 @@ class ViwacoApi:
             self._accept_response_cookies(reading_cookies)
             return ViwacoData(invoices=invoices, readings=readings, customer=customer)
         except ViwacoWrongAccountError as exc:
-            raise ViwacoAuthError(exc.reason) from exc
+            raise ViwacoAuthError(exc.reason, evidence="mismatched_customer") from exc
         except ViwacoParseError as exc:
             raise ViwacoConnectionError(str(exc)) from exc

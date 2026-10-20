@@ -80,15 +80,31 @@ def render_pdf_pngs(pdf: bytes) -> list[bytes]:
     return result
 
 
-def make_archive_relative(folder: str, year: int, month: int, extension: str, page: int = 1) -> str:
+def make_archive_relative(folder: str, year: int, month: int, extension: str, page: int = 1, variant: str = "official") -> str:
     """No user-supplied paths. Random folder obscures listing, not access control."""
     if not (folder.isalnum() and 2010 <= year <= 2100 and 1 <= month <= 12):
         raise ValueError("Đường dẫn lưu trữ không hợp lệ")
-    if extension not in ("pdf", "png") or not (1 <= page <= 10):
+    if extension not in ("pdf", "png") or not (1 <= page <= 10) or variant not in ("official", "reference", "html"):
         raise ValueError("Loại file không hợp lệ")
-    suffix = f"_p{page:02d}" if page > 1 else ""
+    suffix = ("_tham-khao" if variant == "reference" else "_html" if variant == "html" else "") + (f"_p{page:02d}" if page > 1 else "")
     return f"viwaco_reader/{folder}/{year}/{year}-{month:02d}{suffix}.{extension}"
 
 
 def local_url(relative: str) -> str:
     return "/local/" + relative
+
+
+def existing_pngs_are_valid(paths: list[str]) -> bool:
+    """Verify all cataloged PNGs actually exist and can be decoded."""
+    from PIL import Image
+    if not paths or len(paths) > 10:
+        return False
+    for path in paths:
+        try:
+            with Image.open(path) as img:
+                if img.format != "PNG" or img.width < 100 or img.height < 100:
+                    return False
+                img.verify()
+        except (OSError, ValueError, SyntaxError):
+            return False
+    return True

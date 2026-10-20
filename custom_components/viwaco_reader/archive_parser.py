@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit, urljoin, urlunsplit
 
 from bs4 import BeautifulSoup
 
@@ -150,3 +150,63 @@ def parse_invoice_view(html: str, expected_customer_id: str) -> dict:
             elif "tổng cộng" in label:
                 summary["total_vnd"] = _money(_simple_text(tds[-1]))
     return {**summary, "tariffs": tiers}
+
+
+def download_candidates(lookup_html: str, view_html: str = "") -> list[str]:
+    """Look for *actual* PDF download URLs advertised by the official pages.
+
+    No guesswork about server APIs, no off-host or javascript URLs, and no
+    forwarding of the tracing-portal login Cookie. Returns absolute HTTPS URLs.
+    """
+    candidates: list[str] = []
+    for html in (lookup_html, view_html):
+        if not html:
+            continue
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup.find_all(["a", "button", "iframe", "embed", "object"]):
+            label = " ".join((" ".join([
+                tag.get_text(" ", strip=True),
+                str(tag.get("title", "")), str(tag.get("id", "")),
+                " ".join(tag.get("class") or []),
+                str(tag.get("download", "")), str(tag.get("aria-label", "")),
+            ])).casefold().split())
+            # Some web portals supply a PDF iframe only after clicking preview.
+            embedded = tag.name in ("iframe", "embed", "object") and (
+                "pdf" in label or "invoice" in label or "hoadon" in label
+            )
+            relevant = embedded or any(t in label for t in (
+                "tải bản thể hiện", "tai ban the hien", "download pdf",
+                "tải pdf", "tai pdf", "download-pdf", "downloadpdf",
+                "invoice-download", "download-invoice",
+            ))
+            if not relevant:
+                continue
+            values = [tag.get(k) for k in ("href", "data-url", "data-href", "data-pdf", "src", "data")]
+            # Select a URL literal only; do NOT evaluate javascript handlers.
+            handler = tag.get("onclick") or ""
+            values.extend(re.findall(r"['\"](https?://[^'\"]+|/[^'\"]+)['\"]", handler, re.I))
+            for value in values:
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                value = value.strip()
+                if value.startswith(("#", "javascript:", "data:", "//")):
+                    continue
+                url = urlsplit(urljoin(BASE + "/tra-cuu/", value))
+                try:
+                    permitted = (url.scheme == "https" and url.hostname == HOST
+                                 and url.port is None and not url.username
+                                 and not url.password)
+                except ValueError:
+                    continue
+                if not permitted:
+                    continue
+                if url.username or url.password or len(value) > 1000:
+                    continue
+                if url.path.rstrip("/").lower() in ("/tra-cuu", "/"):
+                    continue
+                absolute = urlunsplit((url.scheme, url.netloc, url.path, url.query, ""))
+                if absolute not in candidates:
+                    candidates.append(absolute)
+                if len(candidates) == 8:
+                    return candidates
+    return candidates
