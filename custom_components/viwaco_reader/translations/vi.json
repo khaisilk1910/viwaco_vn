@@ -51,13 +51,13 @@
           "history_months": "Số tháng lịch sử (mức tối đa = Tất cả)",
           "keepalive_enabled": "Bật duy trì phiên đăng nhập",
           "keepalive_minutes": "Chu kỳ duy trì phiên (phút)",
-          "auto_archive_enabled": "Tự lưu hóa đơn khi xuất hiện tháng mới",
+          "auto_archive_enabled": "Chỉ tự lưu khi thông tin thanh toán / hóa đơn thay đổi",
           "auto_archive_mode": "Định dạng hóa đơn tự lưu"
         },
         "data_description": {
           "history_months": "Từ 6 tháng đến tất cả dữ liệu trên website. Giới hạn lịch sử hiển thị và hóa đơn tải/lưu tiếp theo cho đồng hồ này.",
-          "auto_archive_enabled": "Bật để tự lưu hóa đơn mới sau khi đồng bộ thành công. File trong /www có thể truy cập công khai qua /local/.",
-          "auto_archive_mode": "Chọn PDF, PNG hoặc cả hai. Chỉ áp dụng cho kỳ mới sau khi bật."
+          "auto_archive_enabled": "Ghi nhận trạng thái ở lần đồng bộ đầu. Chỉ lấy PDF/PNG khi có thay đổi thực (kỳ mới, thanh toán, số hóa đơn hoặc mã tra cứu), không thử tải lại ở mỗi lần quét. File /www truy cập được qua /local/.",
+          "auto_archive_mode": "Chọn PDF, PNG hoặc cả hai cho những hóa đơn có thay đổi thực."
         }
       }
     },

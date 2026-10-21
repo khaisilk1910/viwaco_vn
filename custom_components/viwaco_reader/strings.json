@@ -51,13 +51,13 @@
           "history_months": "History months (maximum = All)",
           "keepalive_enabled": "Enable session keep-alive (default: on)",
           "keepalive_minutes": "Session check interval (minutes)",
-          "auto_archive_enabled": "Automatically archive newly published invoices",
+          "auto_archive_enabled": "Archive invoices only on actual billing changes",
           "auto_archive_mode": "Automatic invoice format"
         },
         "data_description": {
           "history_months": "Minimum 6 months. Limits dashboard data and future invoice archives for this meter only.",
-          "auto_archive_enabled": "Opt in to automatic invoice archiving after a successful refresh. Files saved under /www are publicly accessible through /local/.",
-          "auto_archive_mode": "Select PDF, PNG, or both for newly available periods."
+          "auto_archive_enabled": "First successful poll saves a baseline; later new bills or actual payment/invoice changes can trigger an archive. Unchanged polls never re-download. Files under /www are publicly accessible via /local/.",
+          "auto_archive_mode": "Choose PDF, PNG or both for changed invoices."
         }
       }
     },

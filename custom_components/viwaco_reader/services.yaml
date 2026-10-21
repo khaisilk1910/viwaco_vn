@@ -23,7 +23,7 @@ archive_invoices:
   name: Lưu hóa đơn điện tử
   description: >
     Đọc chi tiết từng kỳ và tạo PDF A4/PNG từ bản thể hiện HTML trên VIWACO. Đây là bản in, không chứa chữ ký số gốc.
-    vào /config/www/viwaco_reader. Có thể chạy thủ công; chế độ tự lưu khi có kỳ mới được bật riêng trong Configure.
+    vào /config/www/viwaco_reader. Có thể chạy thủ công; tự lưu chỉ chạy khi dữ liệu thanh toán thực sự thay đổi, được bật riêng trong Configure.
     Tệp trong www có thể truy cập không cần đăng nhập qua /local.
   fields:
     customer_id:

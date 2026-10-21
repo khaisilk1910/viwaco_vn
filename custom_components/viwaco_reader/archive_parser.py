@@ -31,6 +31,31 @@ def invoice_code(invoice_url: str | None) -> str | None:
     return matches[0]
 
 
+def invoice_number_digits(number: str | None) -> str | None:
+    """Extract the printed serial number, preserving its leading zeros.
+
+    The billing portal may label it ``K26TYY 01634639`` while the issuer
+    HTML uses ``1K26TYY`` as its symbol plus ``01634639`` as its number.
+    Do not silently guess a serial from a short or absent value.
+    """
+    if not number:
+        return None
+    match = re.search(r"(\d{4,12})\s*$", number.strip())
+    return match.group(1) if match else None
+
+
+def verify_invoice_number(billing_number: str | None, portal_number: str | None) -> None:
+    """Reject a different printed invoice number before fetching a view."""
+    expected = invoice_number_digits(billing_number)
+    if not expected:
+        # Manual archive of legacy rows without a parseable printed number
+        # still verifies customer, lookup code, period and total.
+        return
+    actual = invoice_number_digits(portal_number)
+    if actual != expected:
+        raise ArchiveParseError("Số hóa đơn tại cổng hóa đơn không khớp bảng thanh toán")
+
+
 def _simple_text(element) -> str:
     return " ".join(element.get_text(" ", strip=True).split()) if element else ""
 
@@ -57,11 +82,20 @@ def _get_labels(table) -> dict[str, str]:
     return result
 
 
-def parse_lookup(html: str, expected_customer_id: str) -> dict:
+def parse_lookup(html: str, expected_customer_id: str, expected_code: str | None = None) -> dict:
     """Parse the official lookup screen and verify the customer before downloading."""
     soup = BeautifulSoup(html, "html.parser")
     if soup.select_one("#divInfo") is None:
         raise ArchiveParseError("Trang tra cứu không có #divInfo")
+    # Verify the code shown by the real lookup form / ShowInvoice script, if
+    # present. Synthetic legacy pages may not carry those controls.
+    if expected_code is not None:
+        shown = soup.select_one("#txtInvoice_Lookup")
+        if shown is not None and shown.get("value") != expected_code:
+            raise ArchiveParseError("Mã tra cứu trên trang hóa đơn không khớp URL")
+        matches = re.findall(r"ShowInvoice\(\s*['\"]([A-Za-z0-9]+)['\"]", html)
+        if matches and (len(set(matches)) != 1 or matches[0] != expected_code):
+            raise ArchiveParseError("Trang tra cứu trả về mã hóa đơn khác URL")
     values: dict[str, str] = {}
     for tr in soup.select("#divInfo .tableInfo tr"):
         tds = tr.find_all("td", recursive=False)

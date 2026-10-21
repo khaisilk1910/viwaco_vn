@@ -13,7 +13,7 @@ from pathlib import Path
 from aiohttp import ClientSession, ClientTimeout, ClientError
 from homeassistant.components import persistent_notification
 
-from .archive_parser import (ArchiveParseError, invoice_code, parse_lookup, parse_invoice_view, BASE)
+from .archive_parser import (ArchiveParseError, invoice_code, invoice_number_digits, verify_invoice_number, parse_lookup, parse_invoice_view, BASE)
 from .pdf_tools import InvoicePdfError, check_or_repair_pdf, existing_pdf_is_valid
 from .html_invoice import render_viwaco_html_invoice
 from .archive_store import (
@@ -127,6 +127,18 @@ class InvoiceArchive:
             raise ValueError("Không có URL tra cứu hóa đơn điện tử hợp lệ")
         period = inv.period
         record = dict(self.records.get(period, {}))
+        saved_number = invoice_number_digits(record.get("invoice_number"))
+        current_number = invoice_number_digits(getattr(inv, "invoice_number", None))
+        old_details = record.get("details") or {}
+        revised_invoice = (
+            (bool(record.get("lookup_code")) and record["lookup_code"] != code)
+            or (bool(saved_number) and bool(current_number) and saved_number != current_number)
+            or (old_details.get("total_vnd") is not None
+                and old_details["total_vnd"] != inv.total_vnd)
+        )
+        # A new invoice code/serial for the same month must never re-use the
+        # old PDF, even if the previous file remains perfectly valid.
+        overwrite = overwrite or revised_invoice
         folder = self._catalog["folder"]
         variant = ("reference" if record.get("pdf_source") == "viwaco-summary"
                    else "html" if record.get("pdf_source") == "viwaco-html" else "official")
@@ -194,7 +206,8 @@ class InvoiceArchive:
         # ever sent to hoadon.viwaco.vn, including for fallback references.
         lookup_bytes = await self._get(session, "/tra-cuu/", {"code": code})
         lookup_html = lookup_bytes.decode("utf-8", "replace")
-        lookup = parse_lookup(lookup_html, self.customer_id)
+        lookup = parse_lookup(lookup_html, self.customer_id, expected_code=code)
+        verify_invoice_number(getattr(inv, "invoice_number", None), lookup.get("invoice_number"))
         if lookup.get("total_vnd") != inv.total_vnd:
             lookup["billing_table_total_vnd"] = inv.total_vnd
             lookup["total_mismatch"] = True
@@ -242,6 +255,8 @@ class InvoiceArchive:
                 )
                 record.update(png_urls=[local_url(relative)], png_source=source)
 
+        record["lookup_code"] = code
+        record["invoice_number"] = lookup.get("invoice_number")
         record["saved_at"] = datetime.now(timezone.utc).isoformat()
         self._catalog["records"][period] = record
         await self._save()
