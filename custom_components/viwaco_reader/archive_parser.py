@@ -34,8 +34,8 @@ def invoice_code(invoice_url: str | None) -> str | None:
 def invoice_number_digits(number: str | None) -> str | None:
     """Extract the printed serial number, preserving its leading zeros.
 
-    The billing portal may label it ``K26TYY 01634639`` while the issuer
-    HTML uses ``1K26TYY`` as its symbol plus ``01634639`` as its number.
+    The billing portal may label it ``K26TYY 00001234`` while the issuer
+    HTML uses ``1K26TYY`` as its symbol plus ``00001234`` as its number.
     Do not silently guess a serial from a short or absent value.
     """
     if not number:

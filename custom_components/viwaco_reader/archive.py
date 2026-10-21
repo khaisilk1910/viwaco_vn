@@ -1,7 +1,7 @@
-"""Archive VIWACO invoice HTML as printable A4 PDF and PNG.
+"""Archive the original issuer PDF and derived PNG, never HTML printouts.
 
-No Mode=PDF requests. Identity and amounts are checked before rendering.
-Output is labeled as an HTML printout, not an issuer-signed original.
+Each PDF is requested from the issuer in an isolated invoice-portal session.
+No Cookie from the VIWACO metering portal is transferred to this session.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from homeassistant.components import persistent_notification
 
 from .archive_parser import (ArchiveParseError, invoice_code, invoice_number_digits, verify_invoice_number, parse_lookup, parse_invoice_view, BASE)
 from .pdf_tools import InvoicePdfError, check_or_repair_pdf, existing_pdf_is_valid
-from .html_invoice import render_viwaco_html_invoice
+from .official_pdf import verify_supplier_pdf
 from .archive_store import (
     load_catalog, local_url, make_archive_relative, render_pdf_pngs, existing_pngs_are_valid,
     write_bytes_atomic, write_catalog_atomic,
@@ -60,12 +60,16 @@ class InvoiceArchive:
             write_catalog_atomic, self._path, self._catalog
         )
 
-    async def _get(self, session: ClientSession, path: str, params: dict, is_pdf: bool = False) -> bytes:
+    async def _get(self, session: ClientSession, path: str, params: dict, is_pdf: bool = False,
+                   response_meta: dict | None = None, referer: str | None = None) -> bytes:
         """Fetch fixed-host documents with bounded retry for transient failures."""
         for attempt in range(3):
             try:
                 async with session.get(
-                    BASE + path, params=params, allow_redirects=False
+                    BASE + path, params=params, allow_redirects=False,
+                    headers=({"Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+                              "Accept-Encoding": "identity", "Referer": referer}
+                             if is_pdf and referer else None),
                 ) as response:
                     if response.status in (429, 500, 502, 503, 504):
                         if attempt < 2:
@@ -83,6 +87,15 @@ class InvoiceArchive:
                     if len(payload) > 25 * 1024 * 1024:
                         raise ValueError("Hóa đơn vượt giới hạn dung lượng 25 MB")
                     if is_pdf:
+                        # Avoid silently accepting a truncated PDF body. aiohttp
+                        # usually raises ClientPayloadError; this is an extra guard.
+                        if (response.content_length is not None
+                                and not response.headers.get("Content-Encoding")
+                                and len(payload) != response.content_length):
+                            raise ValueError("PDF chưa tải đủ số byte Content-Length")
+                        kind = response.headers.get("Content-Type", "").lower().split(";")[0].strip()
+                        if kind != "application/pdf":
+                            raise ValueError(f"Máy chủ trả {kind or 'không rõ'} thay vì application/pdf")
                         if b"%PDF-" not in payload[:1024]:
                             kind = response.headers.get("Content-Type", "unknown").split(";")[0][:50]
                             raise ValueError(
@@ -91,6 +104,8 @@ class InvoiceArchive:
                             )
                     elif b"<html" not in payload[:4096].lower() and b"<root" not in payload[:4096].lower():
                         raise ValueError("Không nhận được HTML hợp lệ từ hóa đơn điện tử")
+                    if response_meta is not None:
+                        response_meta["Content-Disposition"] = response.headers.get("Content-Disposition", "")
                     return payload
             except asyncio.TimeoutError as exc:
                 if attempt == 2:
@@ -173,87 +188,77 @@ class InvoiceArchive:
             await self._save()
 
         need_details = overwrite or not record.get("details")
-        # Evaluate each format independently. A valid original PDF must NEVER
-        # be downgraded because the PNG happens to be a reference summary.
+        # An old HTML reconstruction must be upgraded to the real issuer PDF
+        # even when its file is readable and overwrite=False.
         need_pdf = mode in ("pdf", "both") and (
-            overwrite or not old_pdf_ok or record.get("pdf_source") == "viwaco-summary"
+            overwrite or not old_pdf_ok or record.get("pdf_source") != "viwaco-original"
         )
         need_png = mode in ("png", "both") and (
-            overwrite or not png_ok or record.get("png_source") == "viwaco-summary"
+            overwrite or not png_ok or record.get("png_source") != "viwaco-original"
         )
         if not any((need_details, need_pdf, need_png)):
             return False
 
-        # Offline regeneration: an already validated original PDF can be used
-        # for missing/corrupt reference PNG without another website request.
-        if need_png and not need_pdf and not need_details and old_pdf_ok and variant in ("official", "html"):
+        # Create missing PNG offline from a previously verified issuer PDF.
+        if need_png and not need_pdf and not need_details and old_pdf_ok and record.get("pdf_source") == "viwaco-original":
             raw = await self.hass.async_add_executor_job(Path(old_pdf_path).read_bytes)
             pages = await self.hass.async_add_executor_job(render_pdf_pngs, raw)
             urls = []
             for index, payload in enumerate(pages, 1):
-                relative = make_archive_relative(folder, inv.year, inv.month, "png", index, variant=variant)
+                relative = make_archive_relative(folder, inv.year, inv.month, "png", index)
                 await self.hass.async_add_executor_job(
                     write_bytes_atomic, self.hass.config.path("www", relative), payload
                 )
                 urls.append(local_url(relative))
-            record.update(png_urls=urls, png_source=record.get("pdf_source", "viwaco-original"),
+            record.update(png_urls=urls, png_source="viwaco-original",
                           saved_at=datetime.now(timezone.utc).isoformat())
             self._catalog["records"][period] = record
             await self._save()
             return True
 
-        # Look up again to verify customer identity. No tracing-site cookie is
-        # ever sent to hoadon.viwaco.vn, including for fallback references.
+        # A GET to /tra-cuu/ establishes an independent ASP.NET_SessionId for
+        # hoadon.viwaco.vn. Our ClientSession has no tracuu.viwaco.vn Cookie.
         lookup_bytes = await self._get(session, "/tra-cuu/", {"code": code})
-        lookup_html = lookup_bytes.decode("utf-8", "replace")
-        lookup = parse_lookup(lookup_html, self.customer_id, expected_code=code)
+        lookup = parse_lookup(lookup_bytes.decode("utf-8-sig", "replace"),
+                              self.customer_id, expected_code=code)
         verify_invoice_number(getattr(inv, "invoice_number", None), lookup.get("invoice_number"))
         if lookup.get("total_vnd") != inv.total_vnd:
-            lookup["billing_table_total_vnd"] = inv.total_vnd
-            lookup["total_mismatch"] = True
-
-        if need_pdf or need_png or need_details:
-            # The issuer's HTML is the single source for rendered PDF/PNG.
-            view_bytes = await self._get(session, "/View.aspx", {"Code": code, "Mode": "HTML"})
-            view_html = view_bytes.decode("utf-8-sig", "replace")
-            detail = {**lookup, **parse_invoice_view(view_html, self.customer_id)}
-        else:
-            detail = dict(lookup)
-            view_html = ""
-        if need_details:
-            record["details"] = detail
-
+            raise InvoicePdfError("Tổng tiền bảng thanh toán và cổng hóa đơn VIWACO không khớp")
+        record["details"] = {**record.get("details", {}), **lookup}
         if need_pdf or need_png:
-            if lookup.get("total_mismatch"):
-                raise InvoicePdfError("Số tiền bảng VIWACO khác cổng tra cứu; không tạo PDF/PNG")
-            # Compare the signed issuer HTML view's amount against the lookup
-            # and the billing row. Never generate a plausible wrong bill.
-            total = detail.get("total_vnd")
-            if total is None or total != lookup.get("total_vnd"):
-                raise InvoicePdfError("Tổng tiền bản HTML khác trang tra cứu VIWACO")
-            qr = await self._fetch_optional_asset(session, "/qrcode.ashx", {"code": code})
-            background = await self._fetch_optional_asset(session, "/invoice.jpg", {})
-            pdf, png = await self.hass.async_add_executor_job(
-                render_viwaco_html_invoice, view_html, self.customer_id, code,
-                period, total, qr, background, lookup.get("invoice_number")
+            info = {}
+            data = await self._get(
+                session, "/View.aspx", {"Code": code, "Mode": "PDF"},
+                is_pdf=True, response_meta=info,
+                referer=f"{BASE}/tra-cuu/?code={code}",
             )
-            checked = await self.hass.async_add_executor_job(check_or_repair_pdf, pdf)
-            if checked.repaired:
-                raise InvoicePdfError("Bản PDF HTML tạo ra không hợp lệ")
-            source = "viwaco-html"
+            pdf, pages_count = await self.hass.async_add_executor_job(
+                lambda: verify_supplier_pdf(
+                    data, customer_id=self.customer_id, code=code,
+                    invoice_number=lookup.get("invoice_number"),
+                    total_vnd=lookup.get("total_vnd"), year=inv.year, month=inv.month,
+                    content_disposition=info.get("Content-Disposition", ""),
+                )
+            )
+            # Render everything BEFORE publishing PDF/catalog, so a PNG failure
+            # never causes a partially successful 'both' archive entry.
+            pngs = (await self.hass.async_add_executor_job(render_pdf_pngs, pdf)) if need_png else []
             if need_pdf:
-                relative = make_archive_relative(folder, inv.year, inv.month, "pdf", variant="html")
+                relative = make_archive_relative(folder, inv.year, inv.month, "pdf")
                 await self.hass.async_add_executor_job(
-                    write_bytes_atomic, self.hass.config.path("www", relative), checked.content
+                    write_bytes_atomic, self.hass.config.path("www", relative), pdf
                 )
-                record.update(pdf_url=local_url(relative), pdf_source=source,
-                              pdf_repaired=False, pdf_pages=checked.pages)
+                record.update(pdf_url=local_url(relative), pdf_source="viwaco-original",
+                              pdf_repaired=False, pdf_pages=pages_count)
             if need_png:
-                relative = make_archive_relative(folder, inv.year, inv.month, "png", variant="html")
-                await self.hass.async_add_executor_job(
-                    write_bytes_atomic, self.hass.config.path("www", relative), png
-                )
-                record.update(png_urls=[local_url(relative)], png_source=source)
+                urls = []
+                for index, payload in enumerate(pngs, 1):
+                    relative = make_archive_relative(folder, inv.year, inv.month, "png", index)
+                    await self.hass.async_add_executor_job(
+                        write_bytes_atomic, self.hass.config.path("www", relative), payload
+                    )
+                    urls.append(local_url(relative))
+                record.update(png_urls=urls, png_source="viwaco-original")
 
         record["lookup_code"] = code
         record["invoice_number"] = lookup.get("invoice_number")
@@ -279,22 +284,20 @@ class InvoiceArchive:
             failures = []
             completed = []
             changed = 0
-            html_renders = 0
             references = 0
             notification = f"viwaco_reader_{self.entry_id}_archive"
             try:
                 timeout = ClientTimeout(total=40, connect=12)
                 async with ClientSession(timeout=timeout, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; HomeAssistant-VIWACO/1.3)",
-                    "Accept": "text/html,image/png,image/jpeg;q=0.9,*/*;q=0.8",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+                    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.7",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 }) as session:
                     for idx, inv in enumerate(selected, start=1):
                         try:
                             async with _DOWNLOAD_GATE:
                                 if await self._process_one(session, inv, mode, overwrite):
                                     changed += 1
-                                    if self.records.get(inv.period, {}).get("pdf_source") == "viwaco-html":
-                                        html_renders += 1
                                 final = self.records.get(inv.period, {})
                                 is_reference = ((mode in ("pdf", "both") and
                                                  final.get("pdf_source") == "viwaco-summary") or
@@ -328,8 +331,6 @@ class InvoiceArchive:
                 self.status["running"] = False
                 self.status["message"] = (f"Hoàn tất: {changed} kỳ tải/cập nhật, "
                                           f"{len(failures)} kỳ lỗi, tổng {len(selected)} kỳ"
-                                          + (f"; {html_renders} kỳ kết xuất PDF/PNG từ HTML "
-                                             "(không chứa chữ ký số)" if html_renders else "")
                                           + (f"; {references} bản tóm tắt cũ chờ nâng cấp từ HTML" if references else ""))
                 if notify:
                     persistent_notification.async_create(
@@ -345,7 +346,7 @@ class InvoiceArchive:
                         self.hass,
                         title=f"VIWACO Reader – lỗi tự lưu hóa đơn ({self.customer_id})",
                         message=(self.status["message"] + "\n\n" + "; ".join(failures[:5])
-                                 + "\n\nSẽ thử lại sau khi đồng bộ dữ liệu thành công."),
+                                 + "\n\nKhông tự thử lại ở mỗi lần quét; dùng Action thủ công hoặc chờ thay đổi thanh toán mới."),
                         notification_id=f"{notification}_auto_error",
                     )
                 else:
