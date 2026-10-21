@@ -34,12 +34,21 @@ archive_invoices:
         text: {}
     year:
       name: Năm
-      description: 0 nghĩa là mọi năm đã có hóa đơn.
+      description: 0 = tất cả các năm; hoặc nhập năm 2010-2100 (ví dụ 2026). Không nhập 1 để chỉ năm hiện tại.
       default: 0
       selector:
         number:
           min: 0
           max: 2100
+          mode: box
+    month:
+      name: Tháng (tùy chọn)
+      description: 0 = mọi tháng; 1-12 = tháng cụ thể. Khi chọn tháng phải nhập year cụ thể.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 12
           mode: box
     mode:
       name: Loại lưu trữ
@@ -62,7 +71,7 @@ archive_invoices:
         boolean: {}
     max_invoices:
       name: Giới hạn số kỳ
-      description: 0 là toàn bộ; có thể thử 1-3 kỳ trước khi tải hết.
+      description: 0 = tất cả kỳ phù hợp bộ lọc; 1-200 = lấy các kỳ mới nhất, xếp giảm dần năm/tháng.
       default: 0
       selector:
         number:

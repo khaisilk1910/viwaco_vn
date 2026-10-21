@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 
-from aiohttp import ClientSession, ClientTimeout, ClientError
+from aiohttp import ClientSession, ClientTimeout, ClientError, ClientPayloadError
 from homeassistant.components import persistent_notification
 
 from .archive_parser import (ArchiveParseError, invoice_code, invoice_number_digits, verify_invoice_number, parse_lookup, parse_invoice_view, BASE)
@@ -25,6 +25,28 @@ _LOGGER = logging.getLogger(__name__)
 
 # Keep simultaneous accounts from repeatedly hammering the invoice portal.
 _DOWNLOAD_GATE = asyncio.Semaphore(1)
+
+
+def select_archive_invoices(invoices, *, year: int = 0, month: int = 0,
+                            max_invoices: int = 0) -> list:
+    """Select exact calendar periods, newest first, regardless of portal order.
+
+    Year 0 means all years; month 0 means all months. A specific month
+    always requires a specific year to avoid ambiguous bulk exports.
+    """
+    if year != 0 and not 2010 <= year <= 2100:
+        raise ValueError("year phải là 0 hoặc một năm từ 2010 đến 2100")
+    if not 0 <= month <= 12:
+        raise ValueError("month phải từ 0 đến 12")
+    if month and year == 0:
+        raise ValueError("Khi chọn month, phải chọn year cụ thể")
+    if not 0 <= max_invoices <= 200:
+        raise ValueError("max_invoices phải từ 0 đến 200")
+    selected = [inv for inv in invoices
+                if (year == 0 or inv.year == year)
+                and (month == 0 or inv.month == month)]
+    selected.sort(key=lambda inv: (inv.year, inv.month), reverse=True)
+    return selected[:max_invoices] if max_invoices else selected
 
 
 class InvoiceArchive:
@@ -83,16 +105,32 @@ class InvoiceArchive:
                         raise ValueError(f"HTTP {response.status} từ máy chủ hóa đơn điện tử")
                     if response.content_length is not None and response.content_length > 25 * 1024 * 1024:
                         raise ValueError("Hóa đơn vượt giới hạn dung lượng 25 MB")
-                    payload = await response.content.read(25 * 1024 * 1024 + 1)
-                    if len(payload) > 25 * 1024 * 1024:
-                        raise ValueError("Hóa đơn vượt giới hạn dung lượng 25 MB")
+                    # aiohttp StreamReader.read(n) may return only *currently*
+                    # available bytes, not a complete response. Read until EOF,
+                    # without trusting Content-Length for equality. The PDFium
+                    # identity and structure checks decide whether the body is
+                    # a usable invoice; the 25 MB cap remains a safety limit.
+                    chunks = []
+                    received = 0
+                    try:
+                        async for chunk in response.content.iter_chunked(64 * 1024):
+                            received += len(chunk)
+                            if received > 25 * 1024 * 1024:
+                                raise ValueError("Hóa đơn vượt giới hạn dung lượng 25 MB")
+                            chunks.append(chunk)
+                    except ClientPayloadError:
+                        # Some IIS responses report inconsistent transport
+                        # framing. If the complete PDF trailer already arrived,
+                        # let PDFium + strict invoice-field checks judge it.
+                        # Never accept an incomplete/malformed PDF this way.
+                        candidate = b"".join(chunks)
+                        if not (is_pdf and b"%PDF-" in candidate[:1024]
+                                and b"%%EOF" in candidate[-4096:]):
+                            raise
+                        _LOGGER.warning("VIWACO PDF response framing inconsistent; "
+                                        "validating received document without Content-Length equality")
+                    payload = b"".join(chunks)
                     if is_pdf:
-                        # Avoid silently accepting a truncated PDF body. aiohttp
-                        # usually raises ClientPayloadError; this is an extra guard.
-                        if (response.content_length is not None
-                                and not response.headers.get("Content-Encoding")
-                                and len(payload) != response.content_length):
-                            raise ValueError("PDF chưa tải đủ số byte Content-Length")
                         kind = response.headers.get("Content-Type", "").lower().split(";")[0].strip()
                         if kind != "application/pdf":
                             raise ValueError(f"Máy chủ trả {kind or 'không rõ'} thay vì application/pdf")
@@ -267,18 +305,30 @@ class InvoiceArchive:
         await self._save()
         return True
 
-    async def async_sync(self, invoices, *, year: int = 0, mode: str = "both",
-                         overwrite: bool = False, max_invoices: int = 0,
-                         notify: bool = True) -> dict | None:
+    async def async_sync(self, invoices, *, year: int = 0, month: int = 0,
+                         mode: str = "both", overwrite: bool = False,
+                         max_invoices: int = 0, notify: bool = True) -> dict | None:
         """Download selected invoices; report successes for automatic retry tracking."""
         if self._sync_lock.locked():
             _LOGGER.info("VIWACO customer=%s: archive sync already running", self.customer_id)
             return
         async with self._sync_lock:
             await self.async_load()
-            selected = [inv for inv in invoices if (not year or inv.year == year)]
-            if max_invoices:
-                selected = selected[:max_invoices]
+            selected = select_archive_invoices(invoices, year=year, month=month,
+                                               max_invoices=max_invoices)
+            if not selected:
+                message = (f"Không tìm thấy kỳ hóa đơn phù hợp: year={year}, month={month}. "
+                           "Kiểm tra lịch sử thanh toán đã đồng bộ rồi thử year=0, month=0.")
+                self.status = {"running": False, "done": 0, "total": 0,
+                               "errors": 0, "message": message}
+                if notify:
+                    persistent_notification.async_create(
+                        self.hass,
+                        title=f"VIWACO Reader – lưu hóa đơn ({self.customer_id})",
+                        message=message,
+                        notification_id=f"viwaco_reader_{self.entry_id}_archive",
+                    )
+                return {"completed": [], "failures": []}
             self.status = {"running": True, "done": 0, "total": len(selected),
                            "errors": 0, "message": "Đang đồng bộ lưu trữ"}
             failures = []

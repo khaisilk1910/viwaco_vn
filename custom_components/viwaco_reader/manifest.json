@@ -1,7 +1,7 @@
 {
   "domain": "viwaco_reader",
   "name": "VIWACO Reader",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "config_flow": true,
   "documentation": "https://github.com/khaisiik1910/viwaco_vn#readme",
   "iot_class": "cloud_polling",

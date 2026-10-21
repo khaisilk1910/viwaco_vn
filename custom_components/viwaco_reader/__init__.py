@@ -14,6 +14,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
@@ -25,7 +26,7 @@ from .coordinator import ViwacoCoordinator
 from .recent import latest_billing_periods
 
 _LOGGER = logging.getLogger(__name__)
-DASHBOARD_URL = "/viwaco_reader/viwaco-dashboard.js?v=1.7.5"
+DASHBOARD_URL = "/viwaco_reader/viwaco-dashboard.js?v=1.7.6"
 
 
 async def _async_register_dashboard_resource(hass: HomeAssistant) -> None:
@@ -168,13 +169,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def async_archive_service(call: ServiceCall) -> None:
         """Queue on-demand downloads; never delay Home Assistant or service return."""
         customer_id = call.data.get(CONF_CUSTOMER_ID)
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            if customer_id and entry.data[CONF_CUSTOMER_ID] != customer_id:
-                continue
+        entries = list(hass.config_entries.async_entries(DOMAIN))
+        if customer_id:
+            matched = [entry for entry in entries
+                       if entry.data[CONF_CUSTOMER_ID] == customer_id]
+            # HA YAML may turn an unquoted ID into an integer, stripping zeros.
+            # Resolve only when exactly one configured entry has that numeric
+            # identity; never silently use a different account.
+            if not matched and customer_id.isascii() and customer_id.isdecimal():
+                numeric_matches = [entry for entry in entries
+                    if entry.data[CONF_CUSTOMER_ID].isascii()
+                    and entry.data[CONF_CUSTOMER_ID].isdecimal()
+                    and entry.data[CONF_CUSTOMER_ID].lstrip("0") == customer_id.lstrip("0")]
+                if len(numeric_matches) == 1:
+                    matched = numeric_matches
+            if not matched:
+                raise HomeAssistantError(
+                    "Không tìm thấy mã khách hàng VIWACO đã cấu hình; "
+                    "nhập customer_id dạng chuỗi trong dấu nháy kép để giữ số 0 đầu."
+                )
+            entries = matched
+        for entry in entries:
             co = getattr(entry, "runtime_data", None)
             if not isinstance(co, ViwacoCoordinator) or co.data is None:
                 _LOGGER.warning("VIWACO archive: customer %s has no loaded invoice history",
                                 entry.data[CONF_CUSTOMER_ID])
+                if customer_id:
+                    raise HomeAssistantError(
+                        "Chưa có dữ liệu kỳ hóa đơn cho khách hàng này. "
+                        "Hãy đồng bộ dữ liệu trước khi chạy Action lưu hóa đơn."
+                    )
                 continue
             if co.archive.status.get("running"):
                 _LOGGER.info("VIWACO archive: customer=%s sync already in progress", co.customer_id)
@@ -184,6 +208,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 co.archive.async_sync(
                     co.data.invoices,
                     year=call.data.get("year", 0),
+                    month=call.data.get("month", 0),
                     mode=call.data.get("mode", "both"),
                     max_invoices=call.data.get("max_invoices", 0),
                     overwrite=call.data.get("overwrite", False),
@@ -191,13 +216,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 f"VIWACO archive {entry.entry_id}",
             )
 
-    archive_schema = vol.Schema({
+    def _validate_archive_filters(options):
+        if options.get("month", 0) and not options.get("year", 0):
+            raise vol.Invalid("Chọn year cụ thể khi month khác 0")
+        return options
+
+    archive_schema = vol.All(vol.Schema({
         vol.Optional(CONF_CUSTOMER_ID): cv.string,
-        vol.Optional("year", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=2100)),
+        vol.Optional("year", default=0): vol.All(
+            vol.Coerce(int), vol.Any(vol.In((0,)), vol.Range(min=2010, max=2100))),
+        vol.Optional("month", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=12)),
         vol.Optional("mode", default="both"): vol.In(("details", "pdf", "png", "both")),
         vol.Optional("overwrite", default=False): cv.boolean,
         vol.Optional("max_invoices", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=200)),
-    })
+    }), _validate_archive_filters)
     hass.services.async_register(DOMAIN, "archive_invoices", async_archive_service, schema=archive_schema)
     return True
 
